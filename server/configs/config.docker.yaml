@@ -11,7 +11,7 @@ upload:
   temp_upload_dir: ${APP_UPLOAD_TEMP_UPLOAD_DIR:-/app/uploads/temp}
 
 storage:
-  driver: ${APP_STORAGE_DRIVER:-qiniu}
+  driver: ${APP_STORAGE_DRIVER:-local}
   base_dir: ${APP_STORAGE_BASE_DIR:-/app/uploads}
 
 qiniu:
