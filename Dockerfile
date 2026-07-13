@@ -26,23 +26,18 @@ RUN --mount=type=cache,target=/go/pkg/mod \
   go build -trimpath -ldflags="-s -w" -o /out/worker ./cmd/worker
 
 FROM alpine:3.21 AS base
-RUN apk add --no-cache ca-certificates tzdata && adduser -D -H -s /sbin/nologin app
+RUN apk add --no-cache ca-certificates tzdata
 WORKDIR /app
-RUN mkdir -p ./.run/uploads && chown -R app:app /app
-USER app
+RUN mkdir -p ./.run/uploads
 
 FROM base AS api
-# 把配置文件打进运行镜像，使镜像自包含（无需宿主机挂载 configs）
 COPY --from=builder /src/server/configs /app/configs
 COPY --from=builder /out/api /app/api
 EXPOSE 8080
 ENTRYPOINT ["/app/api"]
 
 FROM base AS worker
-# 视频转码依赖 ffmpeg，必须安装在运行镜像内
-USER root
 RUN apk add --no-cache ffmpeg
-USER app
 COPY --from=builder /src/server/configs /app/configs
 COPY --from=builder /out/worker /app/worker
 ENTRYPOINT ["/app/worker"]
