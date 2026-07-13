@@ -7,7 +7,7 @@ server:
  
 upload:
   path: ${APP_UPLOAD_PATH:-/app/uploads}
-  max_file_size: ${APP_UPLOAD_MAX_FILE_SIZE:-524288000}
+  max_file_size: ${APP_UPLOAD_MAX_FILE_SIZE:-1073741824}
   temp_upload_dir: ${APP_UPLOAD_TEMP_UPLOAD_DIR:-/app/uploads/temp}
 
 storage:
@@ -22,7 +22,7 @@ qiniu:
   secret_key: "${APP_QINIU_SECRET_KEY:-}"
   use_https: ${APP_QINIU_USE_HTTPS:-false}
   use_cdn_domains: ${APP_QINIU_USE_CDN_DOMAINS:-false}
-  max_file_size: ${APP_QINIU_MAX_FILE_SIZE:-524288000}
+  max_file_size: ${APP_QINIU_MAX_FILE_SIZE:-1073741824}
 
 transcode:
   queue_name: ${APP_TRANSCODE_QUEUE_NAME:-mini_bili_transcode}

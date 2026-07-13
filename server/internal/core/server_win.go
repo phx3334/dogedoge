@@ -63,8 +63,8 @@ func InitServer(addr string, Router *gin.Engine) Server {
 		Server: &http.Server{
 			Addr:           addr,
 			Handler:        Router,
-			ReadTimeout:    10 * time.Second,
-			WriteTimeout:   10 * time.Second,
+			ReadTimeout:    1800 * time.Second,
+			WriteTimeout:   1800 * time.Second,
 			MaxHeaderBytes: 1 << 20,
 		},
 	}
