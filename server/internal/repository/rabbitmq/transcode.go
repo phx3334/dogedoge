@@ -57,6 +57,10 @@ func (r *TranscodePublisherRepo) Publish(ctx context.Context, msg cache.Transcod
 		return err
 	}
 
+	// 确保目标队列已存在：消除"worker 尚未声明队列时直发消息被 broker 静默丢弃"的竞态，
+	// 否则视频草稿会一直停在 draft、前端上传永远转圈
+	r.buf.DeclareQueue(redis.TranscodeQueueName)
+
 	// 走缓冲发布（连接可用时直发，不可用时入缓冲并自动重放）
 	// 默认 exchange "" + routingKey=queueName 是 RabbitMQ 直发队列的标准用法
 	return r.buf.Publish(ctx, "", redis.TranscodeQueueName, amqp091.Publishing{

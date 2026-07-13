@@ -2,7 +2,7 @@
 import { ref, computed, onUnmounted } from 'vue'
 import { uploadVideoDraft, getVideoDraftStatus } from '@/api/video'
 import type { VideoDraftStatusResp } from '@/types'
-import { Upload, FileVideo, X, Loader2, CheckCircle, XCircle } from 'lucide-vue-next'
+import { Upload, FileVideo, X, Loader2, CheckCircle, XCircle, AlertTriangle } from 'lucide-vue-next'
 
 const zones = [
   '番剧', '电影', '国创', '电视剧', '综艺', '纪录片', '动画', '游戏', '鬼畜',
@@ -25,6 +25,11 @@ const uploadProgress = ref(0)
 const draftId = ref<number | null>(null)
 const status = ref<VideoDraftStatusResp | null>(null)
 const pollingTimer = ref<number | null>(null)
+// 转码服务异常处理：状态一直停在 draft（worker 未接手）超过该时长即视为疑似未运行，
+// 停止无限轮询并给出明确提示；已推进到 transcoding 则视为正常处理，不计入该超时。
+const uploadTimedout = ref(false)
+const draftStart = ref(0)
+const DRAFT_TIMEOUT_MS = 3 * 60 * 1000
 
 const videoValid = computed(
   () => !!videoFile.value && !!videoTitle.value.trim()
@@ -90,6 +95,7 @@ async function handleUpload() {
   if (!videoFile.value || !videoTitle.value.trim() || uploading.value) return
   uploading.value = true
   uploadProgress.value = 0
+  uploadTimedout.value = false
   try {
     const fd = new FormData()
     fd.append('file', videoFile.value)
@@ -124,6 +130,8 @@ async function handleUpload() {
 
 function startPolling() {
   stopPolling()
+  // 记录起点：用于判断"一直停在 draft"的超时
+  draftStart.value = Date.now()
   const tick = async () => {
     if (!draftId.value) return
     try {
@@ -132,6 +140,17 @@ function startPolling() {
       if (s.status === 'published' || s.status === 'failed') {
         stopPolling()
         return
+      }
+      if (s.status === 'transcoding' || s.status === 'pending_review') {
+        // 已推进到转码中：worker 在正常处理，重置计时，不超时
+        draftStart.value = Date.now()
+      } else if (s.status === 'draft') {
+        // 一直停在 draft：worker 可能未运行 / 未接手该任务，超时后停止轮询并提示
+        if (Date.now() - draftStart.value > DRAFT_TIMEOUT_MS) {
+          uploadTimedout.value = true
+          stopPolling()
+          return
+        }
       }
     } catch {
       // 轮询错误忽略，继续重试
@@ -294,6 +313,16 @@ onUnmounted(() => {
         <span v-if="status.fail_reason" class="text-red-500 text-xs">{{ status.fail_reason }}</span>
       </div>
       <div v-else class="text-sm text-ink-muted">等待处理...</div>
+      <div
+        v-if="uploadTimedout"
+        class="mt-3 text-sm text-amber-600 flex items-start gap-2"
+      >
+        <AlertTriangle :size="16" class="mt-0.5 shrink-0" />
+        <span>
+          转码等待超时，视频可能仍在后台处理中。请确认转码服务（worker）是否已运行，
+          稍后到「我的投稿」查看；或刷新本页重试。
+        </span>
+      </div>
     </div>
 
     <!-- 发布成功 -->

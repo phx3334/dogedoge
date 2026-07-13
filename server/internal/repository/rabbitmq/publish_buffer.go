@@ -183,6 +183,32 @@ func (p *PublishBuffer) Publish(ctx context.Context, exchange, routingKey string
 	return err
 }
 
+// DeclareQueue 在 broker 端幂等声明一个 durable 队列。
+//
+// 为什么发布方也要声明队列：
+//   - 历史实现只在 worker（消费者）启动时声明 mini_bili_transcode 等队列
+//   - 若 API 在 worker 尚未声明队列时就直发消息（默认 exchange "" + routingKey=队列名），
+//     RabbitMQ 会"静默丢弃"该消息（路由不到任何队列）
+//   - 结果：视频草稿永远停在 status=draft，前端轮询永远转圈、上传"一直加载"
+//   - 发布方主动声明（durable + 与 worker 一致的参数）即可消除这个竞态窗口
+//
+// 调用时机：在每个需要保证可达的 Publish 之前调用一次。
+//   - 连接未就绪时直接返回（消息会进入缓冲，由 drainLoop 重放；
+//     届时 worker 通常已声明队列，或由本方法在重放前再次声明兜底）
+//   - 声明是幂等的，重复调用无副作用，开销仅一次 RTT
+func (p *PublishBuffer) DeclareQueue(queueName string) {
+	ch, err := p.conn.Channel()
+	if err != nil {
+		// 连接未就绪：交给 drainLoop 在 broker 恢复后重放，无需在此阻塞
+		return
+	}
+	// durable=true 与 worker 端 QueueDeclare 参数保持一致，避免属性冲突
+	if _, err := ch.QueueDeclare(queueName, true, false, false, false, nil); err != nil {
+		p.logger.Warn("publish buffer: declare queue failed",
+			zap.String("queue", queueName), zap.Error(err))
+	}
+}
+
 // drainLoop 是后台重放协程，每 1s 尝试把缓冲里的消息发出去。
 //
 // 退出条件：

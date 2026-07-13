@@ -93,6 +93,13 @@ services:
       APP_REDIS_PORT: 6379
       APP_RABBITMQ_HOST: rabbitmq
       APP_RABBITMQ_PORT: 5672
+      # 关键修复：api 也要连 RabbitMQ 发布转码消息。
+      # 之前漏配 USERNAME/PASSWORD，导致用 admin/空密码 连接，
+      # 被 broker 拒绝 (403 username or password not allowed)，
+      # 消息无法发布、转码队列从未声明 → 视频上传永远卡在 draft。
+      # 直接引用与 rabbitmq 服务相同的变量，保证账号密码一致。
+      APP_RABBITMQ_USERNAME: "${RABBITMQ_DEFAULT_USER:-admin}"
+      APP_RABBITMQ_PASSWORD: "${RABBITMQ_DEFAULT_PASSWORD:-147258}"
       APP_ELASTICSEARCH_HOST: http://elasticsearch:9200
       APP_AI_BASE_URL: https://api.deepseek.com
       APP_AI_MODEL: deepseek-v4-flash
@@ -128,6 +135,12 @@ services:
       APP_REDIS_PORT: 6379
       APP_RABBITMQ_HOST: rabbitmq
       APP_RABBITMQ_PORT: 5672
+      # 关键修复：worker 消费转码队列必须连上 RabbitMQ。
+      # 之前漏配 USERNAME/PASSWORD，用 admin/空密码 连接被拒 (403)，
+      # 导致转码队列从未声明、消息被静默丢弃、上传永远卡在 draft。
+      # 引用与 rabbitmq 服务相同的变量，保证账号密码一致。
+      APP_RABBITMQ_USERNAME: "${RABBITMQ_DEFAULT_USER:-admin}"
+      APP_RABBITMQ_PASSWORD: "${RABBITMQ_DEFAULT_PASSWORD:-147258}"
       APP_ELASTICSEARCH_HOST: http://elasticsearch:9200
       APP_AI_BASE_URL: https://api.deepseek.com
       APP_AI_MODEL: deepseek-v4-flash
