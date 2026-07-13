@@ -45,6 +45,8 @@ export function getUserVideos(user_id: string, page: number = 1, page_size: numb
 }
 
 // 删除自己投稿的视频（作者权限由后端校验）
+// 注意：后端用 ShouldBindQuery 读取 video_id，故必须放 params（query 字符串），
+// 不能放 data（请求 body），否则后端绑定失败报"参数错误"。
 export function deleteVideo(video_id: number) {
-  return request.delete('/video', { data: { video_id } })
+  return request.delete('/video', { params: { video_id } })
 }

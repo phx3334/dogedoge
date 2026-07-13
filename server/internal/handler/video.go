@@ -54,9 +54,13 @@ func (h *VideoHandler) GetVideoDetail(c *gin.Context) {
 // 鉴权由 privateGroup 的 JWT 中间件保证；视频归属校验在 VideoLogic.DeleteVideo 内完成。
 func (h *VideoHandler) DeleteVideo(c *gin.Context) {
 	var req request.VideoDetailReq
+	// 优先从 query 字符串读取（前端用 params 传参，与 detail 接口一致）；
+	// 兜底再尝试 JSON/表单 body，避免参数放错位置直接报"参数错误"。
 	if err := c.ShouldBindQuery(&req); err != nil {
-		response.FailWithMsg(c, "参数错误")
-		return
+		if err2 := c.ShouldBind(&req); err2 != nil {
+			response.FailWithMsg(c, "参数错误")
+			return
+		}
 	}
 
 	userID := pkg.GetUserID(c, h.logic.Config)
