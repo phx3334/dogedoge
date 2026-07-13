@@ -71,4 +71,8 @@ type VideoRepository interface {
 	IncrementCoinCount(ctx context.Context, videoID uint, delta int) error
 	// IncrementDanmakuCount 视频 danmaku_count +delta（发送弹幕时调用）
 	IncrementDanmakuCount(ctx context.Context, videoID uint, delta int) error
+
+	// DeleteVideo 软删除指定视频（设置 deleted_at）。
+	// 仅当调用方（VideoLogic.DeleteVideo）已校验"操作者即作者"后调用。
+	DeleteVideo(ctx context.Context, id uint) error
 }

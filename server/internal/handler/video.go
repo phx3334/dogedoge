@@ -49,3 +49,26 @@ func (h *VideoHandler) GetVideoDetail(c *gin.Context) {
 
 	response.OkWithData(c, data)
 }
+
+// DeleteVideo 处理作者删除自己投稿的视频请求。
+// 鉴权由 privateGroup 的 JWT 中间件保证；视频归属校验在 VideoLogic.DeleteVideo 内完成。
+func (h *VideoHandler) DeleteVideo(c *gin.Context) {
+	var req request.VideoDetailReq
+	if err := c.ShouldBindQuery(&req); err != nil {
+		response.FailWithMsg(c, "参数错误")
+		return
+	}
+
+	userID := pkg.GetUserID(c, h.logic.Config)
+	if userID == "" {
+		response.FailWithMsg(c, "请先登录")
+		return
+	}
+
+	if err := h.logic.VideoLogic.DeleteVideo(c.Request.Context(), userID, req.VideoID); err != nil {
+		response.FailWithMsg(c, err.Error())
+		return
+	}
+
+	response.OkWithMsg(c, "删除成功")
+}

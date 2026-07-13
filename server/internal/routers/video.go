@@ -29,5 +29,7 @@ func (v *VideoRouter) InitVideoRouter(publicGroup, privateGroup *gin.RouterGroup
 	{
 		videodraftrouter.POST("draft/upload", handlerGroup.VideoDraftHandler.UploadDraft)
 		videodraftrouter.GET("draft/status", handlerGroup.VideoDraftHandler.GetStatus)
+		// 作者删除自己投稿的视频（权限校验在 Logic 层：操作者须为视频作者）
+		videodraftrouter.DELETE("", handlerGroup.VideoHandler.DeleteVideo)
 	}
 }

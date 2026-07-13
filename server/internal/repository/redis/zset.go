@@ -143,6 +143,17 @@ func (r *RedisClient) ZRevRangeByScoreWithScores(ctx context.Context, key string
 	return r.Client.ZRevRangeByScoreWithScores(ctx, key, opt).Result()
 }
 
+// ZRem 按成员（视频 ID 字符串）从有序集合移除单个成员。
+// 视频删除时调用，将其从热度 ZSet（全局 + 分区）中剔除。
+func (r *RedisClient) ZRem(ctx context.Context, key string, member string) error {
+	if r.Client == nil {
+		return ErrRedisUnavailable
+	}
+	ctx, cancel := r.WithTimeout(ctx)
+	defer cancel()
+	return r.Client.ZRem(ctx, key, member).Err()
+}
+
 // ZRemRangeByScore 按分数范围删除成员。
 // min/max 支持 "(" 前缀表示开区间，如 "(100" 表示 score>100。
 func (r *RedisClient) ZRemRangeByScore(ctx context.Context, key, min, max string) error {

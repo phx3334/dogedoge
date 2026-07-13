@@ -5,8 +5,11 @@ import (
 	"errors"
 	"fmt"
 	"strconv"
+	"strings"
 	"sync"
 	"time"
+
+	"gorm.io/gorm"
 
 	"fake_tiktok/internal/breaker"
 	"fake_tiktok/internal/domain/database"
@@ -64,6 +67,110 @@ type hotVideosCache struct {
 
 func NewVideoLogic(deps *LogicDeps) *VideoLogic {
 	return &VideoLogic{deps: deps}
+}
+
+// DeleteVideo 作者删除自己投稿的视频。
+//
+// 流程：
+//  1. 查询视频（FindVideoByID 已自动过滤软删除记录，查不到即返回"视频不存在"）
+//  2. 校验作者身份：video.AuthorID 必须等于当前登录 userID，否则返回"无权限删除"
+//  3. 软删除数据库记录（后续所有查询自动隐藏该视频）
+//  4. 尽力清理关联资源（任一失败仅记日志，不阻塞主流程）：
+//     - 删除 Storage 中视频文件与封面文件
+//     - 删除 Redis 视频缓存（静态/动态 Hash + 空对象标记）
+//     - 从热度 ZSet（全局 + 所属分区）移除该视频
+//     - 从 ES 搜索索引删除该视频文档
+//
+// 注意：仅做视频主体级联清理；评论/点赞/收藏/弹幕等关联数据保留（可后续审计/统计），
+// 且不再通过列表/详情/搜索对外可见。
+func (v *VideoLogic) DeleteVideo(ctx context.Context, userID string, videoID uint) error {
+	video, err := v.deps.VideoRepo.FindVideoByID(ctx, videoID)
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return errors.New("视频不存在")
+		}
+		return fmt.Errorf("查询失败: %w", err)
+	}
+	if video.AuthorID != userID {
+		return errors.New("无权限删除")
+	}
+
+	// 3. 软删除
+	if err := v.deps.VideoRepo.DeleteVideo(ctx, videoID); err != nil {
+		return fmt.Errorf("删除失败: %w", err)
+	}
+
+	// 4. 尽力清理关联资源
+	v.cleanupDeletedVideo(ctx, video)
+	return nil
+}
+
+// cleanupDeletedVideo 删除视频后的关联资源清理（失败不致命）。
+func (v *VideoLogic) cleanupDeletedVideo(ctx context.Context, video *database.Video) {
+	logger := v.deps.Logger
+
+	// 4.1 删除物理文件（local / qiniu 统一走 Storage 抽象）
+	for _, rawURL := range []string{video.PlayURL, video.CoverURL} {
+		key := storageKeyFromURL(rawURL)
+		if key == "" {
+			continue
+		}
+		if err := v.deps.Storage.Delete(ctx, key); err != nil && logger != nil {
+			logger.Warn("delete video: remove storage file failed",
+				zap.Uint("video_id", video.ID), zap.String("key", key), zap.Error(err))
+		}
+	}
+
+	// 4.2 删除 Redis 视频缓存
+	if v.deps.VideoCacheRepo != nil {
+		if err := v.deps.VideoCacheRepo.DeleteVideoCache(ctx, video.ID); err != nil && logger != nil {
+			logger.Warn("delete video: clear cache failed",
+				zap.Uint("video_id", video.ID), zap.Error(err))
+		}
+	}
+
+	// 4.3 从热度 ZSet 移除（全局 + 分区）
+	if v.deps.RankingRepo != nil {
+		member := strconv.FormatUint(uint64(video.ID), 10)
+		if err := v.deps.RankingRepo.ZRem(ctx, v.deps.ClientRepo.BuildPublishedZSetKey(""), member); err != nil && logger != nil {
+			logger.Warn("delete video: remove from global zset failed",
+				zap.Uint("video_id", video.ID), zap.Error(err))
+		}
+		if video.Zone != "" {
+			if err := v.deps.RankingRepo.ZRem(ctx, v.deps.ClientRepo.BuildPublishedZSetKey(video.Zone), member); err != nil && logger != nil {
+				logger.Warn("delete video: remove from zone zset failed",
+					zap.Uint("video_id", video.ID), zap.String("zone", video.Zone), zap.Error(err))
+			}
+		}
+	}
+
+	// 4.4 从 ES 搜索索引删除
+	if v.deps.VideoSearchRepo != nil {
+		if err := v.deps.VideoSearchRepo.DeleteVideo(ctx, strconv.FormatUint(uint64(video.ID), 10)); err != nil && logger != nil {
+			logger.Warn("delete video: remove from ES failed",
+				zap.Uint("video_id", video.ID), zap.Error(err))
+		}
+	}
+}
+
+// storageKeyFromURL 从存储访问 URL 反推出 Storage 抽象层使用的 key。
+//
+//	- qiniu：scheme://domain/key → key
+//	- local ：/uploads/key        → key
+//
+// 无法解析时返回空字符串，调用方跳过删除（避免误删）。
+func storageKeyFromURL(rawURL string) string {
+	if rawURL == "" {
+		return ""
+	}
+	if i := strings.Index(rawURL, "://"); i >= 0 {
+		rest := rawURL[i+3:]
+		if j := strings.IndexByte(rest, '/'); j >= 0 {
+			return rest[j+1:]
+		}
+		return ""
+	}
+	return strings.TrimPrefix(rawURL, "/uploads/")
 }
 
 // getZoneCache 获取指定分区的缓存结构（懒创建，sync.Map 保证并发安全）

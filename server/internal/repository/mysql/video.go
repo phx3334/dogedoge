@@ -129,6 +129,15 @@ func (v *VideoRepo) FindVideoByID(ctx context.Context, id uint) (*database.Video
 	return &video, nil
 }
 
+// DeleteVideo 软删除视频（设置 deleted_at）。
+// 依赖 database.Video 上的 gorm.DeletedAt 字段：GORM 在 Delete 时不会物理删除，
+// 而是写入 deleted_at；同时所有 Find/First 查询自动过滤已删除记录。
+func (v *VideoRepo) DeleteVideo(ctx context.Context, id uint) error {
+	ctx, cancel := withTimeout(ctx)
+	defer cancel()
+	return v.db.WithContext(ctx).Delete(&database.Video{}, id).Error
+}
+
 // CreateDraft 插入一条 status=draft 的 Video 记录。
 // 调用方负责设置 Status / DraftRawPath / DraftCoverPath / Title / Description / Zone / TagsJSON / AuthorID，
 // GORM 在 Create 成功后会回填 v.ID。

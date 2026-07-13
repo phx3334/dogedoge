@@ -2,6 +2,8 @@ package database
 
 import (
 	"time"
+
+	"gorm.io/gorm"
 )
 
 type Role int
@@ -72,6 +74,11 @@ type Video struct {
 	DraftCoverPath    string `gorm:"size:1024"`
 	ReviewedAt        *time.Time
 	ReviewedByAdminID *uint64 `gorm:"index"`
+
+	// DeletedAt 软删除时间戳；非 nil 表示作者已删除该投稿。
+	// GORM 自动在 Where/Find/First 查询中追加 "deleted_at IS NULL" 过滤，
+	// 使已删除视频从首页列表、分区榜、作者主页、搜索等所有查询中隐藏。
+	DeletedAt gorm.DeletedAt `gorm:"index"`
 }
 
 type Danmaku struct {

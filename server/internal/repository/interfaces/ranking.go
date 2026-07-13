@@ -25,6 +25,9 @@ type RankingRepository interface {
 	// ---- 删除操作 ----
 	ZRemRangeByRank(ctx context.Context, key string, start, stop int64) error
 	ZRemRangeByScore(ctx context.Context, key, min, max string) error
+	// ZRem 按成员（视频 ID 字符串）从有序集合移除单个成员。
+	// 用于视频删除时将其从热度 ZSet（全局 + 分区）中剔除。
+	ZRem(ctx context.Context, key string, member string) error
 
 	// ---- 集合操作 ----
 	ZCard(ctx context.Context, key string) (int64, error)

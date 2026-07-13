@@ -3,7 +3,7 @@ import { ref, watch, computed } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { UserPlus, UserCheck, Pencil, Video as VideoIcon, Rss, Heart, MessageCircle, Folder } from 'lucide-vue-next'
 import { getUserHome } from '@/api/user'
-import { getUserVideos } from '@/api/video'
+import { getUserVideos, deleteVideo } from '@/api/video'
 import { getUserDynamics } from '@/api/dynamic'
 import { followUser, unfollowUser } from '@/api/interaction'
 import { useUserStore } from '@/stores/user'
@@ -74,6 +74,22 @@ async function loadVideos(page: number = 1) {
     videoPage.value = page
   } finally {
     videoLoading.value = false
+  }
+}
+
+// 删除自己投稿的视频（仅 isSelf 时展示删除按钮）
+const deletingId = ref<number | null>(null)
+async function onDeleteVideo(video: HomeVideoInfo) {
+  if (!window.confirm(`确定删除视频《${video.title || '未命名'}》吗？此操作不可恢复。`)) return
+  deletingId.value = video.id
+  try {
+    await deleteVideo(video.id)
+    videos.value = videos.value.filter((v) => v.id !== video.id)
+    videoTotal.value = Math.max(0, videoTotal.value - 1)
+  } catch {
+    // 错误提示由请求拦截器统一处理
+  } finally {
+    deletingId.value = null
   }
 }
 
@@ -301,7 +317,17 @@ watch(
           v-else-if="videos.length"
           class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4"
         >
-          <VideoCard v-for="video in videos" :key="video.id" :video="video" />
+          <div v-for="video in videos" :key="video.id" class="relative group">
+            <VideoCard :video="video" />
+            <button
+              v-if="isSelf"
+              class="absolute top-2 right-2 z-10 flex items-center gap-1 px-2 h-7 rounded-full text-xs font-medium bg-black/60 text-white opacity-0 group-hover:opacity-100 hover:bg-red-500 transition disabled:opacity-40"
+              :disabled="deletingId === video.id"
+              @click.stop="onDeleteVideo(video)"
+            >
+              {{ deletingId === video.id ? '删除中' : '删除' }}
+            </button>
+          </div>
         </div>
         <EmptyState v-else text="该用户暂无投稿" />
         <Pagination

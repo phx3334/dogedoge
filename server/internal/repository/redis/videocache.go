@@ -294,3 +294,20 @@ func (r *VideoCacheRepo) WriteVideoCache(ctx context.Context, items []*cache.Vid
 		r.logger.Error("[BatchCache] batch write cache failed", zap.Error(err))
 	}
 }
+
+// DeleteVideoCache 删除指定视频的全部 Redis 缓存：静态 Hash、动态 Hash、空对象标记。
+// 删除后该视频从缓存失效，后续请求回源 MySQL；若视频已软删除，回源返回 404。
+func (r *VideoCacheRepo) DeleteVideoCache(ctx context.Context, videoID uint) error {
+	if r.client.Client == nil {
+		return ErrRedisUnavailable
+	}
+	ctx, cancel := r.client.WithTimeout(ctx)
+	defer cancel()
+	vid := strconv.FormatUint(uint64(videoID), 10)
+	keys := []string{
+		r.client.BuildKey(VideoStaticHashKey, vid),
+		r.client.BuildKey(VideoDynamicHashKey, vid),
+		r.client.BuildKey(VideoEmptyHashKey, vid),
+	}
+	return r.client.Client.Del(ctx, keys...).Err()
+}

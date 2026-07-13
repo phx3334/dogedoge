@@ -34,4 +34,9 @@ type VideoCacheRepository interface {
 	IncrementCoinCount(ctx context.Context, videoID uint, delta int) error
 	// IncrementCommentCount 视频动态缓存中 comment_count +delta（评论时调用）
 	IncrementCommentCount(ctx context.Context, videoID uint, delta int) error
+
+	// DeleteVideoCache 删除指定视频的静态/动态 Hash 缓存与空对象标记，
+	// 使其从缓存失效；后续请求回源 MySQL 时若已软删除则返回 404，
+	// 避免已删除视频仍通过陈旧缓存被展示。
+	DeleteVideoCache(ctx context.Context, videoID uint) error
 }

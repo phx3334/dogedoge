@@ -43,3 +43,8 @@ export function getUserVideos(user_id: string, page: number = 1, page_size: numb
     params: { user_id, page, page_size },
   })
 }
+
+// 删除自己投稿的视频（作者权限由后端校验）
+export function deleteVideo(video_id: number) {
+  return request.delete('/video', { data: { video_id } })
+}

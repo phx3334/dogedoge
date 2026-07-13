@@ -187,13 +187,22 @@ func transcodeOne(ctx context.Context, msg cache.TranscodeMsg, db *gorm.DB, stor
 		crf = 23
 	}
 
-	// ffmpeg -i {input} -c:v libx264 -preset medium -crf 23 -c:a aac -y {output}
+	// ffmpeg -i {input} -c:v libx264 -preset medium -crf 23 -maxrate 2M
+	//   -bufsize 4M -c:a aac -movflags +faststart -y {output}
+	// 关键优化（修复 Web 播放卡顿）：
+	//   - -movflags +faststart：把 moov 索引原子前置到文件头，
+	//     支持浏览器边下边播 / 任意拖拽，否则 moov 在文件末尾会导致整段下载完才播放。
+	//   - -maxrate/-bufsize：限制峰值码率，避免对已经压过的源重编码后
+	//     文件比源还大（如 28.9M 源转出 45M），导致流式播放带宽不足而缓冲卡顿。
 	cmd := exec.CommandContext(transcodeCtx, ffmpegBin,
 		"-i", msg.DraftRawPath,
 		"-c:v", outputCodec,
 		"-preset", preset,
 		"-crf", strconv.Itoa(crf),
+		"-maxrate", "2M",
+		"-bufsize", "4M",
 		"-c:a", "aac",
+		"-movflags", "+faststart",
 		"-y", outputPath,
 	)
 	// 捕获 stderr 用于失败时输出 fail_reason
