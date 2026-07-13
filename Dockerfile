@@ -40,7 +40,9 @@ ENTRYPOINT ["/app/api"]
 
 FROM base AS worker
 # 视频转码依赖 ffmpeg，必须安装在运行镜像内
+USER root
 RUN apk add --no-cache ffmpeg
+USER app
 COPY --from=builder /src/server/configs /app/configs
 COPY --from=builder /out/worker /app/worker
 ENTRYPOINT ["/app/worker"]
