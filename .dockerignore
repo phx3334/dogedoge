@@ -1,0 +1,7 @@
+.git
+server/.env
+server/uploads/
+**/node_modules
+web/
+*.exe
+*.mp4
