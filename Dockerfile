@@ -33,8 +33,12 @@ RUN mkdir -p ./.run/uploads
 FROM base AS api
 COPY --from=builder /src/server/configs /app/configs
 COPY --from=builder /out/api /app/api
+# 默认头像等静态种子：放到非挂载路径，由 entrypoint 在容器启动时同步进 uploads 卷
+COPY server/seed /app/uploads-seed
+COPY server/docker-entrypoint.sh /app/docker-entrypoint.sh
+RUN chmod +x /app/docker-entrypoint.sh
 EXPOSE 8080
-ENTRYPOINT ["/app/api"]
+ENTRYPOINT ["/app/docker-entrypoint.sh"]
 
 FROM base AS worker
 RUN apk add --no-cache ffmpeg
