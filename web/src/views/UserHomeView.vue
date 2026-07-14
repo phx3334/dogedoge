@@ -1,10 +1,10 @@
 <script setup lang="ts">
 import { ref, watch, computed } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { UserPlus, UserCheck, Pencil, Video as VideoIcon, Rss, Heart, MessageCircle, Folder } from 'lucide-vue-next'
+import { UserPlus, UserCheck, Pencil, Video as VideoIcon, Rss, Heart, MessageCircle, Folder, Play, FileText } from 'lucide-vue-next'
 import { getUserHome } from '@/api/user'
 import { getUserVideos, deleteVideo } from '@/api/video'
-import { getUserDynamics } from '@/api/dynamic'
+import { getUserDynamics, getUserMixedDynamics, getDynamicFeed } from '@/api/dynamic'
 import { followUser, unfollowUser } from '@/api/interaction'
 import { useUserStore } from '@/stores/user'
 import type { HomeVideoInfo, DynamicItem, UserHomeResp, FavoriteFolderInfo } from '@/types'
@@ -98,7 +98,11 @@ async function onDeleteVideo(video: HomeVideoInfo) {
 async function loadDynamics(page: number = 1) {
   dynamicLoading.value = true
   try {
-    const res = await getUserDynamics(userId.value, page, 20)
+    // 看自己的主页：走 feed 流，包含"自己 + 关注的人"的视频/文章/动态
+    // 看他人主页：仅展示该用户自己的视频/文章/动态混合
+    const res = isSelf.value
+      ? await getDynamicFeed(page, 20)
+      : await getUserMixedDynamics(userId.value, page, 20)
     dynamics.value = res.list || []
     dynamicTotal.value = res.total || 0
     dynamicPage.value = page
@@ -153,6 +157,23 @@ function parseImages(json: string): string[] {
 
 function goFolder(id: number) {
   router.push(`/space/favorites?folder=${id}`)
+}
+
+// 动态卡片跳转
+function goUser(id: string) {
+  if (id) router.push(`/user/${id}`)
+}
+function goVideo(id?: number) {
+  if (id) router.push(`/video/${id}`)
+}
+function goArticle(id?: number) {
+  if (id) router.push(`/article/${id}`)
+}
+function formatDuration(sec?: number) {
+  if (!sec || sec <= 0) return ''
+  const m = Math.floor(sec / 60)
+  const s = sec % 60
+  return `${m}:${s.toString().padStart(2, '0')}`
 }
 
 function goMessage() {
@@ -341,55 +362,157 @@ watch(
         />
       </div>
 
-      <!-- 动态 Tab -->
+      <!-- 动态 Tab（混合：视频 + 文章 + 图文动态） -->
       <div v-else-if="activeTab === 'dynamics'">
         <div v-if="dynamicLoading && !dynamics.length" class="text-center py-10 text-sm text-ink-muted">
           加载中...
         </div>
-        <div v-else-if="dynamics.length" class="space-y-4">
-          <div
+        <div v-else-if="dynamics.length" class="space-y-3">
+          <article
             v-for="item in dynamics"
-            :key="item.id"
+            :key="`${item.type}-${item.id}`"
             class="bg-white rounded-card shadow-card p-4"
           >
-            <div class="flex items-center gap-2 mb-2">
+            <!-- 卡片头部 -->
+            <header class="flex items-start gap-3 mb-3">
               <img
                 :src="item.avatar_url || '/uploads/avatar/default.jpg'"
                 :alt="item.username"
-                class="w-8 h-8 rounded-full object-cover"
+                class="w-12 h-12 rounded-full object-cover border border-surface-subtle shrink-0 cursor-pointer"
                 @error="($event.target as HTMLImageElement).src = '/uploads/avatar/default.jpg'"
+                @click="goUser(item.user_id)"
               />
-              <div class="flex-1 min-w-0">
-                <div class="text-sm font-medium text-ink">{{ item.username }}</div>
-                <div class="text-xs text-ink-muted">{{ formatDate(item.created_at) }}</div>
+              <div class="flex-1 min-w-0 pt-1">
+                <div
+                  class="text-[15px] font-semibold text-primary truncate cursor-pointer hover:text-primary-dark transition"
+                  @click="goUser(item.user_id)"
+                >
+                  {{ item.username }}
+                </div>
+                <div class="flex items-center gap-1.5 mt-1 text-xs text-ink-muted">
+                  <span>{{ formatDate(item.created_at) }}</span>
+                  <span>·</span>
+                  <span v-if="item.type === 'video'">投稿了视频</span>
+                  <span v-else-if="item.type === 'article'">投稿了文章</span>
+                  <span v-else>发布了动态</span>
+                </div>
               </div>
-            </div>
-            <h3 v-if="item.title" class="text-sm font-medium text-ink mb-1">{{ item.title }}</h3>
-            <p class="text-sm text-ink-secondary whitespace-pre-wrap break-words">{{ item.content }}</p>
-            <!-- 图片网格 -->
-            <div
-              v-if="parseImages(item.images_json).length"
-              class="grid grid-cols-3 gap-1 mt-3"
-            >
-              <div
-                v-for="(img, idx) in parseImages(item.images_json).slice(0, 9)"
-                :key="idx"
-                class="aspect-square rounded overflow-hidden bg-surface-muted"
+              <span
+                v-if="item.type === 'video'"
+                class="flex items-center gap-1 px-2 py-0.5 bg-primary/10 text-primary text-xs rounded-full shrink-0"
               >
-                <img :src="img" :alt="`图片${idx + 1}`" loading="lazy" class="w-full h-full object-cover" />
+                <Play :size="11" /> 视频
+              </span>
+              <span
+                v-else-if="item.type === 'article'"
+                class="flex items-center gap-1 px-2 py-0.5 bg-secondary/10 text-secondary text-xs rounded-full shrink-0"
+              >
+                <FileText :size="11" /> 文章
+              </span>
+            </header>
+
+            <!-- 视频类型 -->
+            <template v-if="item.type === 'video'">
+              <div class="block cursor-pointer group" @click="goVideo(item.video_id!)">
+                <h3 class="text-[15px] font-semibold text-ink mb-2 group-hover:text-primary transition leading-snug">
+                  {{ item.title }}
+                </h3>
+                <div class="relative aspect-video bg-surface-muted rounded-lg overflow-hidden">
+                  <img
+                    :src="item.cover_url"
+                    :alt="item.title"
+                    loading="lazy"
+                    class="w-full h-full object-cover group-hover:scale-[1.02] transition-transform duration-300"
+                  />
+                  <div class="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition">
+                    <div class="w-12 h-12 bg-black/60 rounded-full flex items-center justify-center">
+                      <Play :size="24" class="text-white ml-1" fill="white" />
+                    </div>
+                  </div>
+                  <div
+                    v-if="item.duration"
+                    class="absolute bottom-1.5 right-1.5 px-1.5 py-0.5 bg-black/70 text-white text-xs rounded"
+                  >
+                    {{ formatDuration(item.duration) }}
+                  </div>
+                </div>
               </div>
-            </div>
-            <div class="flex items-center gap-5 mt-3 text-xs text-ink-muted">
-              <span class="flex items-center gap-1">
-                <Heart :size="14" :fill="item.is_liked ? 'currentColor' : 'none'" :class="item.is_liked ? 'text-primary' : ''" />
-                {{ formatCount(item.like_count) }}
+            </template>
+
+            <!-- 文章类型 -->
+            <template v-else-if="item.type === 'article'">
+              <div class="block cursor-pointer group" @click="goArticle(item.article_id!)">
+                <h3 class="text-[15px] font-semibold text-ink mb-2 group-hover:text-primary transition leading-snug">
+                  {{ item.title }}
+                </h3>
+                <div v-if="item.cover_url" class="flex gap-3">
+                  <div class="flex-1 min-w-0">
+                    <p class="text-sm text-ink-secondary line-clamp-3 whitespace-pre-wrap leading-relaxed">
+                      {{ item.content?.replace(/[#*`>-]/g, '').slice(0, 200) }}
+                    </p>
+                  </div>
+                  <div class="w-32 h-20 rounded-lg overflow-hidden bg-surface-muted shrink-0">
+                    <img :src="item.cover_url" :alt="item.title" loading="lazy" class="w-full h-full object-cover" />
+                  </div>
+                </div>
+                <p v-else class="text-sm text-ink-secondary line-clamp-3 whitespace-pre-wrap leading-relaxed">
+                  {{ item.content?.replace(/[#*`>-]/g, '').slice(0, 200) }}
+                </p>
+              </div>
+            </template>
+
+            <!-- 图文动态 -->
+            <template v-else>
+              <h3 v-if="item.title" class="text-[15px] font-semibold text-ink mb-1 leading-snug">{{ item.title }}</h3>
+              <p class="text-sm text-ink leading-relaxed whitespace-pre-wrap break-words mb-3">{{ item.content }}</p>
+              <div v-if="parseImages(item.images_json).length" class="mb-1">
+                <div v-if="parseImages(item.images_json).length === 1" class="max-w-md">
+                  <img :src="parseImages(item.images_json)[0]" alt="" class="w-full rounded-lg" />
+                </div>
+                <div v-else-if="parseImages(item.images_json).length <= 3" class="flex flex-wrap gap-2 max-w-md">
+                  <img
+                    v-for="(img, idx) in parseImages(item.images_json)"
+                    :key="idx"
+                    :src="img"
+                    alt=""
+                    class="w-30 h-30 object-cover rounded-lg"
+                    style="width: 120px; height: 120px;"
+                  />
+                </div>
+                <div v-else class="grid grid-cols-3 gap-2 max-w-sm">
+                  <img
+                    v-for="(img, idx) in parseImages(item.images_json)"
+                    :key="idx"
+                    :src="img"
+                    alt=""
+                    class="w-full aspect-square object-cover rounded-lg"
+                  />
+                </div>
+              </div>
+            </template>
+
+            <!-- 底部操作栏 -->
+            <div class="flex items-center gap-5 mt-3 pt-3 border-t border-surface-subtle text-sm text-ink-secondary">
+              <span class="flex items-center gap-1.5">
+                <Heart
+                  :size="18"
+                  :fill="item.is_liked ? 'currentColor' : 'none'"
+                  :class="item.is_liked ? 'text-primary' : ''"
+                />
+                <span>{{ formatCount(item.like_count) }}</span>
               </span>
-              <span class="flex items-center gap-1">
-                <MessageCircle :size="14" />
-                {{ formatCount(item.comment_count) }}
+              <div class="flex items-center gap-1.5">
+                <MessageCircle :size="18" />
+                <span>{{ formatCount(item.comment_count) }}</span>
+              </div>
+              <span v-if="item.type === 'video'" class="text-xs text-ink-muted ml-auto">
+                播放 {{ formatCount(item.play_count || 0) }}
+              </span>
+              <span v-else-if="item.type === 'article'" class="text-xs text-ink-muted ml-auto">
+                阅读 {{ formatCount(item.view_count || 0) }}
               </span>
             </div>
-          </div>
+          </article>
         </div>
         <EmptyState v-else text="该用户暂无动态" />
         <Pagination

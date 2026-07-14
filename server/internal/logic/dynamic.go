@@ -149,19 +149,51 @@ func (l *DynamicLogic) ListDynamicFeed(ctx context.Context, currentUserID string
 		return nil, fmt.Errorf("查询关注列表失败")
 	}
 
-	// 将自己加入 feed 列表
+	// 将自己加入 feed 列表：动态 = 自己发布的 + 关注的人发布的
 	feedUserIDs := make([]string, 0, len(followeeIDs)+1)
 	feedUserIDs = append(feedUserIDs, currentUserID)
 	feedUserIDs = append(feedUserIDs, followeeIDs...)
 
+	return l.mixedFeedQuery(ctx, currentUserID, feedUserIDs, req.Page, req.PageSize)
+}
+
+// ListUserMixedDynamics 查询指定用户主页的混合动态流（视频投稿+文章投稿+图文动态）。
+// 与 ListDynamicFeed 共用 mixedFeedQuery：让个人主页"动态"Tab 也能看到该用户的
+// 视频与文章，而不只是图文动态。
+func (l *DynamicLogic) ListUserMixedDynamics(ctx context.Context, currentUserID string, req request.ListUserDynamicsReq) (*response.PaginatedResp[response.DynamicItem], error) {
+	if req.Page <= 0 {
+		req.Page = 1
+	}
+	if req.PageSize <= 0 || req.PageSize > 100 {
+		req.PageSize = 20
+	}
+
+	if err := l.deps.Breakers.MySQLReadSem.Acquire(ctx, 1); err != nil {
+		return nil, fmt.Errorf("服务繁忙，请稍后重试")
+	}
+	defer l.deps.Breakers.MySQLReadSem.Release(1)
+
+	// 仅查该用户自己发布的内容（不含其关注流）
+	userIDUint, _ := strconv.ParseUint(req.UserID, 10, 64)
+	if userIDUint == 0 {
+		return nil, fmt.Errorf("参数错误：user_id 非法")
+	}
+	feedUserIDs := []string{req.UserID}
+
+	return l.mixedFeedQuery(ctx, currentUserID, feedUserIDs, req.Page, req.PageSize)
+}
+
+// mixedFeedQuery 并发拉取多类内容（图文动态/视频/文章），合并后按时间倒序分页。
+// userIDs 为内容作者范围；currentUserID 用于判断当前用户对图文动态的已赞状态。
+func (l *DynamicLogic) mixedFeedQuery(ctx context.Context, currentUserID string, userIDs []string, page, pageSize int) (*response.PaginatedResp[response.DynamicItem], error) {
 	curUserID, _ := strconv.ParseUint(currentUserID, 10, 64)
 
 	// 每种类型多查一些，合并后取 pageSize 条
-	perPageFetch := req.PageSize * 2
+	perPageFetch := pageSize * 2
 	if perPageFetch > 50 {
 		perPageFetch = 50
 	}
-	offset := (req.Page - 1) * req.PageSize
+	offset := (page - 1) * pageSize
 
 	// 并发查询三类内容
 	type queryResult struct {
@@ -172,7 +204,7 @@ func (l *DynamicLogic) ListDynamicFeed(ctx context.Context, currentUserID string
 
 	// 1. 图文动态
 	go func() {
-		dynamics, _, err := l.deps.UserDynamicRepo.ListFeed(ctx, feedUserIDs, 1, perPageFetch)
+		dynamics, _, err := l.deps.UserDynamicRepo.ListFeed(ctx, userIDs, 1, perPageFetch)
 		if err != nil {
 			resultCh <- queryResult{err: err}
 			return
@@ -201,7 +233,7 @@ func (l *DynamicLogic) ListDynamicFeed(ctx context.Context, currentUserID string
 
 	// 2. 视频投稿
 	go func() {
-		videos, err := l.deps.VideoRepo.FindPublishedVideosByAuthorIDs(ctx, feedUserIDs, perPageFetch, 0)
+		videos, err := l.deps.VideoRepo.FindPublishedVideosByAuthorIDs(ctx, userIDs, perPageFetch, 0)
 		if err != nil {
 			resultCh <- queryResult{err: err}
 			return
@@ -226,7 +258,7 @@ func (l *DynamicLogic) ListDynamicFeed(ctx context.Context, currentUserID string
 
 	// 3. 文章投稿
 	go func() {
-		articles, err := l.deps.ArticleRepo.FindPublishedArticlesByAuthorIDs(ctx, feedUserIDs, perPageFetch, 0)
+		articles, err := l.deps.ArticleRepo.FindPublishedArticlesByAuthorIDs(ctx, userIDs, perPageFetch, 0)
 		if err != nil {
 			resultCh <- queryResult{err: err}
 			return
@@ -289,7 +321,7 @@ func (l *DynamicLogic) ListDynamicFeed(ctx context.Context, currentUserID string
 	if start > len(allItems) {
 		start = len(allItems)
 	}
-	end := start + req.PageSize
+	end := start + pageSize
 	if end > len(allItems) {
 		end = len(allItems)
 	}
@@ -298,8 +330,8 @@ func (l *DynamicLogic) ListDynamicFeed(ctx context.Context, currentUserID string
 	return &response.PaginatedResp[response.DynamicItem]{
 		List:     pageItems,
 		Total:    total,
-		Page:     req.Page,
-		PageSize: req.PageSize,
+		Page:     page,
+		PageSize: pageSize,
 	}, nil
 }
 

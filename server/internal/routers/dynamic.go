@@ -23,6 +23,8 @@ func (r *DynamicRouter) InitDynamicRouter(publicGroup, privateGroup *gin.RouterG
 	dynamicPublic := publicGroup.Group("dynamic")
 	{
 		dynamicPublic.GET("user", handlerGroup.DynamicHandler.ListUserDynamics)
+		// 个人主页"动态"Tab：混合视频+文章+图文动态
+		dynamicPublic.GET("user-mixed", handlerGroup.DynamicHandler.ListUserMixedDynamics)
 	}
 
 	// 私有路由

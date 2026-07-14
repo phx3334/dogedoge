@@ -67,6 +67,32 @@ func (h *DynamicHandler) ListUserDynamics(c *gin.Context) {
 	response.OkWithData(c, data)
 }
 
+// ListUserMixedDynamics 查询指定用户主页的混合动态流（视频+文章+图文动态）
+// 路由：GET /dynamic/user-mixed（公开组）
+// 查询参数：user_id, page, page_size
+// 响应：PaginatedResp[DynamicItem]
+func (h *DynamicHandler) ListUserMixedDynamics(c *gin.Context) {
+	var req request.ListUserDynamicsReq
+	if err := c.ShouldBindQuery(&req); err != nil {
+		response.FailWithMsg(c, "参数错误：user_id 必填")
+		return
+	}
+	if req.UserID == "" {
+		response.FailWithMsg(c, "参数错误：user_id 必填")
+		return
+	}
+
+	// 当前登录用户（可能为空，未登录时 is_liked 恒为 false）
+	currentUserID := pkg.GetUserID(c, h.logic.Config)
+
+	data, err := h.logic.DynamicLogic.ListUserMixedDynamics(c.Request.Context(), currentUserID, req)
+	if err != nil {
+		response.FailWithMsg(c, err.Error())
+		return
+	}
+	response.OkWithData(c, data)
+}
+
 // ListDynamicFeed 查询关注用户的最新动态流
 //
 // 路由：GET /dynamic/feed（私有组，需登录）

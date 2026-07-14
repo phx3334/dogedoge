@@ -1,9 +1,16 @@
 import request from './request'
 import type { DynamicItem, PaginatedResp } from '@/types'
 
-// 用户动态列表
+// 用户动态列表（仅图文动态）
 export function getUserDynamics(user_id: string, page: number = 1, page_size: number = 20) {
   return request.get<any, PaginatedResp<DynamicItem>>('/dynamic/user', {
+    params: { user_id, page, page_size },
+  })
+}
+
+// 用户主页混合动态（视频+文章+图文动态）
+export function getUserMixedDynamics(user_id: string, page: number = 1, page_size: number = 20) {
+  return request.get<any, PaginatedResp<DynamicItem>>('/dynamic/user-mixed', {
     params: { user_id, page, page_size },
   })
 }
