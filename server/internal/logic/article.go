@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"strconv"
 	"time"
 
 	"fake_tiktok/internal/breaker"
@@ -124,6 +125,20 @@ func (l *ArticleLogic) PublishArticle(ctx context.Context, userID string, req re
 		}
 		return err
 	}
+
+	// 发布成功后通知作者的所有粉丝（异步 best-effort，不阻塞发布响应）
+	go func() {
+		authorName := ""
+		if acc, aerr := l.deps.AccountRepo.FindByID(context.Background(), article.UserID); aerr == nil {
+			authorName = acc.Username
+		}
+		NewNotificationLogic(l.deps).NotifyPublish(
+			context.Background(),
+			article.UserID, authorName, "new_article",
+			strconv.FormatUint(req.ArticleID, 10), article.Title,
+		)
+	}()
+
 	return nil
 }
 

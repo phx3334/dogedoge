@@ -14,6 +14,8 @@ type InteractionRepository interface {
 	GetFansCount(ctx context.Context, userID string) (int64, error)
 	GetFollowingCount(ctx context.Context, userID string) (int64, error)
 	IsUserFollowed(ctx context.Context, followerID, followeeID string) (bool, error)
+	// IsMutualFollow 判断 a、b 是否互相关注（双向都已关注）
+	IsMutualFollow(ctx context.Context, a, b string) (bool, error)
 	// CreateVideoLike 同步写入用户点赞记录到 MySQL VideoLike 表
 	// 返回值 created=true 表示真正新建了记录，created=false 表示记录已存在（幂等）
 	// 调用方根据 created 决定是否发布 MQ 增量，避免 SET 过期后重复点赞导致 likes_count 虚高

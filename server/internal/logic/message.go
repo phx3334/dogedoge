@@ -44,6 +44,24 @@ func (l *MessageLogic) SendMessage(ctx context.Context, senderID string, req req
 		return nil, fmt.Errorf("收件人不存在")
 	}
 
+	// 私信权限校验：
+	//   - 互相关注（双向都已关注）→ 无限私信
+	//   - 否则（单向关注 / 互未关注）→ sender 向 recipient 至多发 1 条消息，
+	//     超出则返回明确提示，避免陌生人滥发。
+	mutual, merr := l.deps.InteractionRepo.IsMutualFollow(ctx, senderID, req.RecipientID)
+	if merr != nil {
+		return nil, fmt.Errorf("服务繁忙，请稍后重试")
+	}
+	if !mutual {
+		sent, cerr := l.deps.MessageRepo.CountFromTo(ctx, senderID, req.RecipientID)
+		if cerr != nil {
+			return nil, fmt.Errorf("服务繁忙，请稍后重试")
+		}
+		if sent >= 1 {
+			return nil, fmt.Errorf("互未关注，仅能向对方发送一条消息")
+		}
+	}
+
 	now := time.Now()
 	m := &database.Message{
 		SenderID:    senderID,

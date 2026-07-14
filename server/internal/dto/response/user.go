@@ -25,6 +25,9 @@ type UserHomeResp struct {
 	Experience         uint64               `json:"experience"`
 	FansCount          int64                `json:"fans_count"`
 	FollowingCount     int64                `json:"following_count"`
+	// IsFollowed 当前登录用户是否已关注该主页用户（用于前端"关注/已关注"按钮正确回显）。
+	// 未登录 / 查看自己主页时为 false。
+	IsFollowed        bool                 `json:"is_followed"`
 	FavoriteFolders    []FavoriteFolderInfo `json:"favorite_folders"`
 	Videos             []HomeVideoInfo      `json:"videos"`
 }
@@ -46,4 +49,11 @@ type UserCard struct {
 	Username  string `json:"username"`
 	AvatarURL string `json:"avatar_url"`
 	Level     int    `json:"level"`
+}
+
+// UserBriefResp 用户简档（供私信入口按 user_id 拉取对端资料，无需手动输入 ID）
+type UserBriefResp struct {
+	ID        string `json:"id"`
+	Username  string `json:"username"`
+	AvatarURL string `json:"avatar_url"`
 }

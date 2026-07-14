@@ -1,5 +1,5 @@
 import request from './request'
-import type { Account, LoginResp, UserLevelResp, CaptchaResp, UserHomeResp } from '@/types'
+import type { Account, LoginResp, UserLevelResp, CaptchaResp, UserHomeResp, UserBriefResp } from '@/types'
 
 // 用户注册
 // 后端 RegisterReq 字段：username / email / password / verifyCode（邮箱验证码）
@@ -92,4 +92,9 @@ export function getCaptcha() {
 // 获取用户主页信息（含视频列表、收藏夹、统计数据）
 export function getUserHome(user_id: string, page: number = 1, page_size: number = 20) {
   return request.get<any, UserHomeResp>('/user/home', { params: { user_id, page, page_size } })
+}
+
+// 获取用户简档（供私信入口按 user_id 拉取对端资料，无需手动输入 ID）
+export function getUserBrief(user_id: string) {
+  return request.get<any, UserBriefResp>('/user/brief', { params: { user_id } })
 }

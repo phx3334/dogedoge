@@ -4,6 +4,7 @@ import { useRoute, useRouter } from 'vue-router'
 import { CheckCheck, Bell, MessageSquare, Send, Trash2, Bot, ArrowLeft } from 'lucide-vue-next'
 import { getNotifications, markNotificationRead, markAllNotificationsRead, deleteNotification } from '@/api/notification'
 import { getConversations, getMessageHistory, sendMessage, markMessageRead } from '@/api/message'
+import { getUserBrief } from '@/api/user'
 import { getAICharacters, chatWithAIStream, type AICharacter, type ChatMessage } from '@/api/ai'
 import { useNotificationStore } from '@/stores/notification'
 import { useMessageStore } from '@/stores/message'
@@ -47,7 +48,7 @@ function parseItem(item: NotificationItem): NotificationItem {
   }
   try {
     const p = JSON.parse(item.payload_json || '{}')
-    parsed.content = p.content || item.comment_preview || ''
+    parsed.content = p.content || p.title || item.comment_preview || ''
     parsed.sender_avatar = p.sender_avatar || ''
     parsed.target_type = p.target_type || ''
     parsed.target_id = p.target_id || ''
@@ -95,11 +96,14 @@ async function onDelete(item: NotificationItem) {
   }
 }
 
-// 点击评论类通知 → 跳转对应评论
+// 点击通知 → 标记已读并按类型跳转
 function onNotifClick(item: NotificationItem) {
-  const isComment = item.type === 'reply_received' || item.type === 'comment_like'
   onRead(item)
-  if (isComment && item.target_type && item.comment_id) {
+  if (item.type === 'new_video' && item.target_id) {
+    router.push(`/video/${item.target_id}`)
+  } else if (item.type === 'new_article' && item.target_id) {
+    router.push(`/article/${item.target_id}`)
+  } else if ((item.type === 'reply_received' || item.type === 'comment_like') && item.target_type && item.comment_id) {
     if (item.target_type === 'video') {
       router.push(`/video/${item.target_id}?comment_id=${item.comment_id}`)
     } else if (item.target_type === 'article') {
@@ -119,6 +123,8 @@ async function onPageChange(p: number) {
 function notifLabel(type: string) {
   if (type === 'comment_like') return '赞了你的评论'
   if (type === 'reply_received') return '回复了你'
+  if (type === 'new_video') return '发布了新视频'
+  if (type === 'new_article') return '发布了新文章'
   return '通知'
 }
 
@@ -326,7 +332,17 @@ async function switchTab(tab: 'notif' | 'message' | 'ai') {
     const peer = route.query.peer as string
     if (peer) {
       const conv = conversations.value.find((c) => c.peer_id === peer)
-      await selectPeer(peer, conv?.peer_name, conv?.peer_avatar)
+      if (conv) {
+        await selectPeer(peer, conv.peer_name, conv.peer_avatar)
+      } else {
+        // 与对方尚无会话：直接拉取对端简档（无需事先聊过），再进入聊天窗口
+        try {
+          const brief = await getUserBrief(peer)
+          await selectPeer(peer, brief.username, brief.avatar_url)
+        } catch {
+          await selectPeer(peer, '', '')
+        }
+      }
     }
   } else if (tab === 'ai') {
     stopPoll()
@@ -442,7 +458,7 @@ onUnmounted(() => stopPoll())
               <div class="flex items-center gap-2">
                 <span class="text-sm font-medium text-ink truncate">{{ item.sender_name }}</span>
                 <span
-                  v-if="item.type === 'comment_like' || item.type === 'reply_received'"
+                  v-if="item.type === 'comment_like' || item.type === 'reply_received' || item.type === 'new_video' || item.type === 'new_article'"
                   class="text-[10px] text-primary bg-primary/10 px-1 rounded"
                 >{{ notifLabel(item.type) }}</span>
                 <span class="text-xs text-ink-muted">{{ fmtDate(item.created_at) }}</span>
@@ -518,9 +534,17 @@ onUnmounted(() => stopPoll())
             <div
               v-for="m in messages"
               :key="m.id"
-              class="flex"
+              class="flex items-end gap-2"
               :class="m.sender_id === userStore.userInfo?.id ? 'justify-end' : 'justify-start'"
             >
+              <!-- 对方头像（左侧） -->
+              <img
+                v-if="m.sender_id !== userStore.userInfo?.id"
+                :src="peerAvatar || '/uploads/avatar/default.jpg'"
+                :alt="peerName"
+                class="w-8 h-8 rounded-full object-cover bg-surface-muted shrink-0"
+                @error="($event.target as HTMLImageElement).src = '/uploads/avatar/default.jpg'"
+              />
               <div
                 class="max-w-[70%] px-3 py-2 rounded-2xl text-sm break-words"
                 :class="m.sender_id === userStore.userInfo?.id
@@ -529,6 +553,14 @@ onUnmounted(() => stopPoll())
               >
                 {{ m.content }}
               </div>
+              <!-- 自己头像（右侧） -->
+              <img
+                v-if="m.sender_id === userStore.userInfo?.id"
+                :src="userStore.userInfo?.avatar_url || '/uploads/avatar/default.jpg'"
+                :alt="userStore.userInfo?.username"
+                class="w-8 h-8 rounded-full object-cover bg-surface-muted shrink-0"
+                @error="($event.target as HTMLImageElement).src = '/uploads/avatar/default.jpg'"
+              />
             </div>
             <div v-if="!messages.length && !msgLoading" class="text-center text-xs text-ink-muted py-8">
               还没有消息，发送第一条吧～

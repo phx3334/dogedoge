@@ -338,8 +338,16 @@ export interface UserHomeResp {
   experience: number
   fans_count: number
   following_count: number
+  is_followed?: boolean
   favorite_folders: FavoriteFolderInfo[]
   videos: HomeVideoInfo[]
+}
+
+// 用户简档（私信入口按 user_id 拉取对端资料）
+export interface UserBriefResp {
+  id: string
+  username: string
+  avatar_url: string
 }
 
 export interface FavoriteFolderInfo {

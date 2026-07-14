@@ -100,6 +100,19 @@ func (r *InteractionRepo) IsUserFollowed(ctx context.Context, followerID, follow
 	return true, nil
 }
 
+// IsMutualFollow 判断 a、b 是否互相关注（两个方向都已关注）。
+// 先查 a→b，未关注直接返回 false（短路，省一次查询）。
+func (r *InteractionRepo) IsMutualFollow(ctx context.Context, a, b string) (bool, error) {
+	fwd, err := r.IsUserFollowed(ctx, a, b)
+	if err != nil {
+		return false, err
+	}
+	if !fwd {
+		return false, nil
+	}
+	return r.IsUserFollowed(ctx, b, a)
+}
+
 // CreateVideoLike 同步写入用户点赞记录到 MySQL VideoLike 表
 // 使用 唯一索引 idx_video_like_user_video 保证幂等：记录已存在时不报错
 //

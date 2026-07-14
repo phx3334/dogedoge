@@ -55,5 +55,7 @@ func (u *UserRouter) InitUserRouter(privateGroup *gin.RouterGroup, publicGroup *
 	{
 		userPublicRouter.POST("forgotPassword", middleware.Limit(redisRepo, "forgotPassword", 5, time.Minute, pkg.KeyByIP, logger), handlerGroup.UserHandler.ForgotPassword)
 		userPublicRouter.GET("home", handlerGroup.UserHandler.UserHomePage)
+		// 私信入口：按 user_id 拉取对端简档（无需手动输入 ID）
+		userPublicRouter.GET("brief", handlerGroup.UserHandler.UserBrief)
 	}
 }

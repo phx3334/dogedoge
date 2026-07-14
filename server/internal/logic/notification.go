@@ -2,10 +2,13 @@ package logic
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 
+	"fake_tiktok/internal/domain/database"
 	"fake_tiktok/internal/dto/request"
 	"fake_tiktok/internal/dto/response"
+	"go.uber.org/zap"
 )
 
 // NotificationLogic 通知业务逻辑
@@ -124,4 +127,53 @@ func (l *NotificationLogic) Delete(ctx context.Context, userID string, req reque
 		return fmt.Errorf("通知不存在或无权删除")
 	}
 	return nil
+}
+
+// NotifyPublish 作者发布视频 / 文章后，通知其所有粉丝（best-effort）。
+//
+// 设计：
+//   - 粉丝量可能很大，按页拉取粉丝 ID 并批量写入通知，避免长时间持锁 / 单次巨事务。
+//   - 通知内容：Type=new_video|new_article；RelatedID=视频/文章 ID；
+//     SenderNamesJSON 为 [作者名]（前端取首个名字展示）；
+//     PayloadJSON 携带 {title, target_type, target_id} 供前端跳转。
+//   - 任何步骤失败仅记日志，不阻塞发布主流程。
+//   - 建议由调用方以 goroutine + context.Background() 异步调用，避免拖慢发布响应。
+func (l *NotificationLogic) NotifyPublish(ctx context.Context, authorID, authorName, notifType, relatedID, title string) {
+	const pageSize = 200
+	for page := 1; ; page++ {
+		followerIDs, _, err := l.deps.InteractionRepo.ListFollowers(ctx, authorID, page, pageSize)
+		if err != nil {
+			l.deps.Logger.Warn("notify publish: list followers failed",
+				zap.String("author_id", authorID), zap.Error(err))
+			return
+		}
+		if len(followerIDs) == 0 {
+			return
+		}
+
+		senderNames, _ := json.Marshal([]string{authorName})
+		payload, _ := json.Marshal(map[string]any{
+			"title":       title,
+			"target_type": notifType,
+			"target_id":   relatedID,
+		})
+		notifs := make([]database.Notification, 0, len(followerIDs))
+		for _, fid := range followerIDs {
+			notifs = append(notifs, database.Notification{
+				RecipientID:     fid,
+				Type:             notifType,
+				RelatedID:        relatedID,
+				SenderNamesJSON:  string(senderNames),
+				PayloadJSON:      string(payload),
+			})
+		}
+		if err := l.deps.NotificationRepo.CreateBatch(ctx, notifs); err != nil {
+			l.deps.Logger.Warn("notify publish: create batch failed",
+				zap.String("author_id", authorID), zap.Error(err))
+			return
+		}
+		if len(followerIDs) < pageSize {
+			return
+		}
+	}
 }

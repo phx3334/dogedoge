@@ -25,4 +25,7 @@ type MessageRepository interface {
 
 	// CountUnread 统计当前用户的未读私信数
 	CountUnread(ctx context.Context, userID string) (int64, error)
+
+	// CountFromTo 统计 sender→recipient 方向的私信条数（用于非互关时限制仅能发 1 条）
+	CountFromTo(ctx context.Context, sender, recipient string) (int64, error)
 }

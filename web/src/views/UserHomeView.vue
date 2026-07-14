@@ -54,7 +54,9 @@ async function loadHomeData() {
   try {
     const res = await getUserHome(userId.value, 1, 20)
     homeData.value = res
-    isFollowed.value = false // 后端 UserHomeResp 未返回 is_followed，需要单独查询
+    // 后端 UserHomeResp.is_followed 已返回"当前登录用户是否关注该用户"，
+    // 用它驱动按钮灰态，避免重新加载 / 路由变动后"已关注"状态丢失。
+    isFollowed.value = res.is_followed ?? false
     videos.value = res.videos || []
     videoTotal.value = res.video_count || 0
     favoriteFolders.value = res.favorite_folders || []

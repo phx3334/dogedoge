@@ -134,3 +134,16 @@ func (r *MessageRepo) CountUnread(ctx context.Context, userID string) (int64, er
 		Count(&count).Error
 	return count, err
 }
+
+// CountFromTo 统计 sender→recipient 方向的私信条数。
+// 用于非互关场景限制"只能向对方发送一条消息"。
+func (r *MessageRepo) CountFromTo(ctx context.Context, sender, recipient string) (int64, error) {
+	ctx, cancel := withTimeout(ctx)
+	defer cancel()
+
+	var count int64
+	err := r.db.WithContext(ctx).Model(&database.Message{}).
+		Where("sender_id = ? AND recipient_id = ?", sender, recipient).
+		Count(&count).Error
+	return count, err
+}

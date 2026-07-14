@@ -366,6 +366,14 @@ func transcodeOne(ctx context.Context, msg cache.TranscodeMsg, db *gorm.DB, stor
 		indexVideoToES(ctx, db, videoSearchRepo, msg.VideoID, logger)
 	}
 
+	// 8.6 视频发布后通知作者的所有粉丝（best-effort，失败仅记日志）
+	var vTitle string
+	var v database.Video
+	if err := db.WithContext(ctx).Select("title").First(&v, msg.VideoID).Error; err == nil {
+		vTitle = v.Title
+	}
+	notifyFollowersOnVideoPublish(ctx, db, logger, msg.UserID, msg.VideoID, vTitle)
+
 	// 9. 转码成功后清理临时文件（draft 原始视频 + 转码输出）
 	//    清理失败仅记日志，不影响业务流程
 	//    注意：DraftCoverPath 若是用户上传的，也应一起清理
@@ -393,6 +401,65 @@ func truncateErr(s string) string {
 	}
 	// 保留末尾 max 字符：最近的 ffmpeg 错误信息通常最有用
 	return "..." + s[len(s)-max+3:]
+}
+
+// notifyFollowersOnVideoPublish 视频发布后通知作者的所有粉丝（best-effort）。
+//
+// worker 不持有 NotificationLogic / repository 注入，故直接用 db 完成：
+//   - 分页拉取粉丝 ID（避免一次性拉全量撑爆内存 / 长事务）
+//   - 批量写入 Notification 表（Type=new_video）
+// 任何步骤失败仅记日志，不影响视频发布主流程。
+func notifyFollowersOnVideoPublish(ctx context.Context, db *gorm.DB, logger *zap.Logger, authorID string, videoID uint, title string) {
+	// 作者名（仅用于通知展示，缺失时降级为"某人"）
+	var author database.Account
+	if err := db.WithContext(ctx).Select("username").First(&author, "id = ?", authorID).Error; err != nil {
+		logger.Warn("notify video publish: query author failed",
+			zap.String("author_id", authorID), zap.Error(err))
+		author.Username = "某人"
+	}
+
+	const pageSize = 200
+	for page := 1; ; page++ {
+		var followerIDs []string
+		if err := db.WithContext(ctx).Model(&database.UserFollow{}).
+			Where("followee_id = ?", authorID).
+			Order("id ASC").
+			Limit(pageSize).Offset((page - 1) * pageSize).
+			Pluck("follower_id", &followerIDs).Error; err != nil {
+			logger.Warn("notify video publish: list followers failed",
+				zap.String("author_id", authorID), zap.Error(err))
+			return
+		}
+		if len(followerIDs) == 0 {
+			return
+		}
+
+		senderNames, _ := json.Marshal([]string{author.Username})
+		payload, _ := json.Marshal(map[string]any{
+			"title":       title,
+			"target_type": "new_video",
+			"target_id":   strconv.FormatUint(uint64(videoID), 10),
+		})
+		notifs := make([]database.Notification, 0, len(followerIDs))
+		relatedID := strconv.FormatUint(uint64(videoID), 10)
+		for _, fid := range followerIDs {
+			notifs = append(notifs, database.Notification{
+				RecipientID:     fid,
+				Type:             "new_video",
+				RelatedID:        relatedID,
+				SenderNamesJSON:  string(senderNames),
+				PayloadJSON:      string(payload),
+			})
+		}
+		if err := db.WithContext(ctx).Create(&notifs).Error; err != nil {
+			logger.Warn("notify video publish: insert notifications failed",
+				zap.String("author_id", authorID), zap.Error(err))
+			return
+		}
+		if len(followerIDs) < pageSize {
+			return
+		}
+	}
 }
 
 // indexVideoToES 查询视频及其作者，构造 ES 文档并写入索引。

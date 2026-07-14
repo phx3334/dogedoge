@@ -665,6 +665,17 @@ func (r *NotificationRepo) Create(ctx context.Context, n *database.Notification)
 	return r.db.WithContext(ctx).Create(n).Error
 }
 
+// CreateBatch 批量插入通知（作者发布后通知其所有粉丝）。
+// 单条插入在粉丝量大时过慢，故批量写入。
+func (r *NotificationRepo) CreateBatch(ctx context.Context, ns []database.Notification) error {
+	if len(ns) == 0 {
+		return nil
+	}
+	ctx, cancel := withTimeout(ctx)
+	defer cancel()
+	return r.db.WithContext(ctx).Create(&ns).Error
+}
+
 // ListByRecipient 分页查询收件人的通知列表（按 CreatedAt 倒序）
 func (r *NotificationRepo) ListByRecipient(ctx context.Context, recipientID string, filterType string, onlyUnread bool, page, pageSize int) ([]database.Notification, int64, error) {
 	ctx, cancel := withTimeout(ctx)

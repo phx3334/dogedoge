@@ -88,6 +88,10 @@ type CommentLikeRepository interface {
 type NotificationRepository interface {
 	Create(ctx context.Context, n *database.Notification) error
 
+	// CreateBatch 批量插入通知（用于作者发布后通知其所有粉丝）。
+	// 单条插入在粉丝量大时过慢，故批量写入。
+	CreateBatch(ctx context.Context, ns []database.Notification) error
+
 	// ListByRecipient 分页查询收件人的通知列表
 	// filterType 为空时查所有类型；非空时只查指定类型
 	// 仅UnreadOnly=true 时只返回未读

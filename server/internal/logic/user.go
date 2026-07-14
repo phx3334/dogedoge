@@ -216,9 +216,28 @@ func (u *UserLogic) getUserCacheData(ctx context.Context, userID string) (*cache
 	return userData, nil
 }
 
+// GetBrief 按 user_id 返回用户简档（id / username / avatar_url）。
+// 用于私信入口：从关注列表 / 用户主页点"私信"时按 user_id 拉取对端资料，
+// 无需手动输入对方 ID。
+func (u *UserLogic) GetBrief(ctx context.Context, userID string) (*response.UserBriefResp, error) {
+	if userID == "" {
+		return nil, fmt.Errorf("user_id 为空")
+	}
+	acc, err := u.deps.AccountRepo.FindByID(ctx, userID)
+	if err != nil {
+		return nil, fmt.Errorf("用户不存在")
+	}
+	return &response.UserBriefResp{
+		ID:        acc.ID,
+		Username:  acc.Username,
+		AvatarURL: acc.AvatarURL,
+	}, nil
+}
+
 // UserHome 获取用户主页信息
+// viewerID 为当前登录用户（用于计算 is_followed）；未登录时传空串。
 // page / pageSize 用于控制作者视频列表的分页，来自请求参数
-func (u *UserLogic) UserHome(ctx context.Context, userID string, page, pageSize int) (*response.UserHomeResp, error) {
+func (u *UserLogic) UserHome(ctx context.Context, viewerID, userID string, page, pageSize int) (*response.UserHomeResp, error) {
 	var cancel context.CancelFunc
 	ctx, cancel = context.WithTimeout(ctx, 3*time.Second)
 	defer cancel()
@@ -344,6 +363,15 @@ func (u *UserLogic) UserHome(ctx context.Context, userID string, page, pageSize 
 		realExperience = account.Experience
 	}
 
+	// is_followed：当前登录用户是否关注了该主页用户。
+	// 仅当 viewer 存在且不是本人时才查询；否则（未登录 / 自己主页）为 false。
+	isFollowed := false
+	if viewerID != "" && viewerID != userID {
+		if ok, ferr := u.deps.InteractionRepo.IsUserFollowed(ctx, viewerID, userID); ferr == nil {
+			isFollowed = ok
+		}
+	}
+
 	return &response.UserHomeResp{
 		ID:                 userData.ID,
 		AvatarURL:          userData.AvatarURL,
@@ -358,6 +386,7 @@ func (u *UserLogic) UserHome(ctx context.Context, userID string, page, pageSize 
 		Experience:         realExperience,
 		FansCount:          userData.FansCount,
 		FollowingCount:     userData.FollowingCount,
+		IsFollowed:        isFollowed,
 		FavoriteFolders:    favoriteFolders,
 		Videos:             videos,
 	}, nil

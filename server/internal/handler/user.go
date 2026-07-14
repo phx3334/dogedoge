@@ -127,13 +127,29 @@ func (h *UserHandler) UserHomePage(c *gin.Context) {
 		response.FailWithMsg(c, err.Error())
 		return
 	}
-	userHome, err := h.logic.UserLogic.UserHome(c.Request.Context(), req.UserID, req.Page, req.PageSize)
+	userHome, err := h.logic.UserLogic.UserHome(c.Request.Context(), pkg.GetUserID(c, h.logic.Config), req.UserID, req.Page, req.PageSize)
 	if err != nil {
 		h.logger.Error("Failed to get card:", zap.Error(err))
 		response.FailWithMsg(c, "Failed to get card")
 		return
 	}
 	response.OkWithData(c, userHome)
+}
+
+// UserBrief 按 user_id 返回用户简档（id / username / avatar_url）。
+// 用于私信入口：从关注列表 / 用户主页点"私信"时无需手动输入对方 ID。
+func (h *UserHandler) UserBrief(c *gin.Context) {
+	userID := c.Query("user_id")
+	if userID == "" {
+		response.FailWithMsg(c, "参数错误：user_id 必填")
+		return
+	}
+	brief, err := h.logic.UserLogic.GetBrief(c.Request.Context(), userID)
+	if err != nil {
+		response.FailWithMsg(c, err.Error())
+		return
+	}
+	response.OkWithData(c, brief)
 }
 
 // -----------------------------------------------------------------------------
