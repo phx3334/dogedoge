@@ -363,6 +363,18 @@ func (u *UserLogic) UserHome(ctx context.Context, viewerID, userID string, page,
 		realExperience = account.Experience
 	}
 
+	// fans_count / following_count 实时从 user_follows 表统计。
+	// 原因：关注/取关虽已通过 HIncrBy 维护 Redis 缓存，但历史缓存基线可能陈旧
+	// （本修复前的关注未回写缓存），实时统计可保证主页数字永远准确、随关注即时变化。
+	realFansCount := userData.FansCount
+	if n, ferr := u.deps.InteractionRepo.GetFansCount(ctx, userID); ferr == nil {
+		realFansCount = n
+	}
+	realFollowingCount := userData.FollowingCount
+	if n, ferr := u.deps.InteractionRepo.GetFollowingCount(ctx, userID); ferr == nil {
+		realFollowingCount = n
+	}
+
 	// is_followed：当前登录用户是否关注了该主页用户。
 	// 仅当 viewer 存在且不是本人时才查询；否则（未登录 / 自己主页）为 false。
 	isFollowed := false
@@ -384,8 +396,8 @@ func (u *UserLogic) UserHome(ctx context.Context, viewerID, userID string, page,
 		TotalLikesReceived: userData.TotalLikesReceived,
 		TotalPlayCount:     userData.TotalPlayCount,
 		Experience:         realExperience,
-		FansCount:          userData.FansCount,
-		FollowingCount:     userData.FollowingCount,
+		FansCount:          realFansCount,
+		FollowingCount:     realFollowingCount,
 		IsFollowed:        isFollowed,
 		FavoriteFolders:    favoriteFolders,
 		Videos:             videos,

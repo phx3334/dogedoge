@@ -12,6 +12,8 @@ type UserCacheRepository interface {
 	IncrementTotalPlayCount(ctx context.Context, userID string) error
 	IncrementFansCount(ctx context.Context, userID string) error
 	IncrementFollowingCount(ctx context.Context, userID string) error
+	DecrementFansCount(ctx context.Context, userID string) error
+	DecrementFollowingCount(ctx context.Context, userID string) error
 	IncrementExperience(ctx context.Context, userID string, delta int64) error
 	DeleteUserCache(ctx context.Context, userID string) error
 }

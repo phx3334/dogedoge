@@ -357,10 +357,19 @@ func (i *InteractionLogic) FollowUser(ctx context.Context, followerID, followeeI
 		return fmt.Errorf("关注失败，请稍后重试")
 	}
 
-	// 仅在真正新建关注时增加被关注者的 fans_count
-	// 实际 accounts 表没有 fans_count 字段，fans 数通过 GetFansCount 实时查询 user_follows 表
-	// 这里 created 仅用于决定是否发送通知
+	// 仅在真正新建关注时维护计数 / 通知。
+	// fans_count / following_count 存于 Redis 的 user:dynamic 缓存，
+	// 必须由业务写操作实时维护（HIncrBy），否则主页展示的数字不会变化。
 	if created {
+		// 被关注者粉丝 +1，关注者关注数 +1（best-effort，失败仅记日志）
+		if err := i.deps.UserCacheRepo.IncrementFansCount(ctx, followeeID); err != nil {
+			i.deps.Logger.Warn("follow: increment fans cache failed",
+				zap.String("followee", followeeID), zap.Error(err))
+		}
+		if err := i.deps.UserCacheRepo.IncrementFollowingCount(ctx, followerID); err != nil {
+			i.deps.Logger.Warn("follow: increment following cache failed",
+				zap.String("follower", followerID), zap.Error(err))
+		}
 		// 通知被关注者（可选：复用 Notification 表）
 		_ = i.notifyFollow(ctx, followerID, followeeID)
 	}
@@ -383,6 +392,16 @@ func (i *InteractionLogic) UnfollowUser(ctx context.Context, followerID, followe
 		return err
 	}); err != nil {
 		return fmt.Errorf("取关失败，请稍后重试")
+	}
+
+	// 取关后同步回退缓存计数（被关注者粉丝 -1，关注者关注数 -1，best-effort）
+	if err := i.deps.UserCacheRepo.DecrementFansCount(ctx, followeeID); err != nil {
+		i.deps.Logger.Warn("unfollow: decrement fans cache failed",
+			zap.String("followee", followeeID), zap.Error(err))
+	}
+	if err := i.deps.UserCacheRepo.DecrementFollowingCount(ctx, followerID); err != nil {
+		i.deps.Logger.Warn("unfollow: decrement following cache failed",
+			zap.String("follower", followerID), zap.Error(err))
 	}
 	return nil
 }

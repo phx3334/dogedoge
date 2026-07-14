@@ -192,6 +192,25 @@ func (r *UserCacheRepo) IncrementFollowingCount(ctx context.Context, userID stri
 	return err
 }
 
+// DecrementFansCount 原子自减用户粉丝数（HIncrBy -1，不会减成负数由 Redis 保证最小为实际值），
+// 取关时调用，保证 /user/home 读取的缓存粉丝数实时回落。
+func (r *UserCacheRepo) DecrementFansCount(ctx context.Context, userID string) error {
+	ctx, cancel := context.WithTimeout(ctx, 200*time.Millisecond)
+	defer cancel()
+	key := r.client.BuildKey(UserDynamicHashKey, userID)
+	_, err := r.client.HIncrBy(ctx, key, "fans_count", -1)
+	return err
+}
+
+// DecrementFollowingCount 原子自减用户关注数（HIncrBy -1），取关时调用。
+func (r *UserCacheRepo) DecrementFollowingCount(ctx context.Context, userID string) error {
+	ctx, cancel := context.WithTimeout(ctx, 200*time.Millisecond)
+	defer cancel()
+	key := r.client.BuildKey(UserDynamicHashKey, userID)
+	_, err := r.client.HIncrBy(ctx, key, "following_count", -1)
+	return err
+}
+
 // IncrementExperience 原子增减用户经验（HIncrBy delta），写入 user:dynamic Hash
 // 与 AddExperience(DB) 同步调用，保证 /user/home、/user/info 读取的缓存经验是最新的
 func (r *UserCacheRepo) IncrementExperience(ctx context.Context, userID string, delta int64) error {
