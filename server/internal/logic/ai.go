@@ -29,7 +29,7 @@ var aiCharacters = []AICharacter{
 	{
 		ID:     "laoba",
 		Name:   "老八",
-		Avatar: "/images/老八.jpg",
+		Avatar: "/images/老八.png",
 		SystemPrompt: `你是"老八"，本名八奈见杏菜，一个热爱美食的女高中生。你认为浪费食物是很可耻的，此外你性格活泼，人缘很好，唯一的缺点可能就是吃得太多了。
 										回答保持简短自然，像朋友聊天一样，每次回复不超过200字。`,
 	},
