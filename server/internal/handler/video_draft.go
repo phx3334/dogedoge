@@ -67,8 +67,8 @@ func (h *VideoDraftHandler) UploadDraft(c *gin.Context) {
 	}
 
 	// 5. 调用 logic 完成原子写入 + DB 插入 + 消息发布
-	// 设置 30 分钟超时：与前端 axios 超时对齐，超时后取消上传避免无限等待（支持 1GB 上传）
-	uploadCtx, uploadCancel := context.WithTimeout(c.Request.Context(), 30*time.Minute)
+	// 设置 1 小时超时：与前端 axios 超时对齐，超时后取消上传避免无限等待（支持大文件上传）
+	uploadCtx, uploadCancel := context.WithTimeout(c.Request.Context(), 60*time.Minute)
 	defer uploadCancel()
 	videoID, err := h.logic.VideoDraftLogic.UploadDraft(uploadCtx, userID, file, cover, req)
 	if err != nil {

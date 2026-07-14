@@ -17,13 +17,13 @@ export function getVideoDetail(video_id: number) {
 // 视频草稿上传
 // 注意：不要手动设置 Content-Type，axios 传 FormData 时会自动加上 boundary
 // 返回 { video_id: number }，前端据此轮询转码状态
-// 超时设置为 30 分钟（1800000ms）：1GB 大文件上传需要足够时间，超时后取消避免无限等待
+// 超时设置为 1 小时（3600000ms）：大文件上传需要足够时间，超时后取消避免无限等待
 export function uploadVideoDraft(
   formData: FormData,
   onProgress?: (percent: number) => void
 ) {
   return request.post<any, { video_id: number }>('/video/draft/upload', formData, {
-    timeout: 1800000, // 30 分钟超时，超时后 axios 自动取消请求（支持 1GB 上传）
+    timeout: 3600000, // 1 小时超时，超时后 axios 自动取消请求（支持大文件上传）
     onUploadProgress: (e) => {
       if (onProgress && e.total) {
         onProgress(Math.round((e.loaded / e.total) * 100))
